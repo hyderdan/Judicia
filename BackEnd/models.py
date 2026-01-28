@@ -1,0 +1,58 @@
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy.orm import relationship
+from database import Base
+import datetime
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    email = Column(String, unique=True)
+    phoneNo = Column(String)
+    password = Column(String)
+    role = Column(String, default="user")
+    status = Column(String, default="pending")  # pending / approved
+
+    # Relationships
+    cases = relationship("Case", back_populates="user", primaryjoin="User.id == Case.user_id")
+
+class Admin(Base):
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    username = Column(String, unique=True)
+    password = Column(String)
+    role = Column(String, default="admin")
+
+class Case(Base):
+    __tablename__ = "cases"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    police_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    title = Column(String)
+    description = Column(Text)
+    incident_date = Column(String)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], back_populates="cases")
+    police = relationship("User", foreign_keys=[police_id])
+    evidence = relationship("Evidence", back_populates="case")
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+
+    id = Column(Integer, primary_key=True)
+    case_id = Column(Integer, ForeignKey("cases.id"))
+    file_path = Column(String)
+    file_type = Column(String) # image / video
+    uploaded_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationship
+    case = relationship("Case", back_populates="evidence")
+
