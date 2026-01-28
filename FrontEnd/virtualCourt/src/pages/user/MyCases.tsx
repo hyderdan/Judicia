@@ -2,7 +2,7 @@ import { DashboardLayout } from "./../../component/layout/Dashboardlayout";
 import { PageHeader } from "./../../component/shared/PageHeader";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { FileText, Clock, CheckCircle2, AlertCircle, Building2, Calendar, Trash2 } from "lucide-react";
+import { FileText, Clock, CheckCircle2, AlertCircle, Building2, Calendar, Trash2, Gavel } from "lucide-react";
 import { cn } from "../../component/utils";
 import { useToast } from "./../../hooks/use-toast";
 
@@ -84,6 +84,8 @@ export default function MyCases() {
     switch (status.toLowerCase()) {
       case "approved": return <CheckCircle2 className="h-5 w-5 text-success" />;
       case "rejected": return <AlertCircle className="h-5 w-5 text-destructive" />;
+      case "sent_to_court": return <Gavel className="h-5 w-5 text-primary" />;
+      case "under_review": return <Clock className="h-5 w-5 text-blue-500" />;
       default: return <Clock className="h-5 w-5 text-warning" />;
     }
   };
@@ -92,6 +94,8 @@ export default function MyCases() {
     switch (status.toLowerCase()) {
       case "approved": return "bg-success/10 text-success border-success/20";
       case "rejected": return "bg-destructive/10 text-destructive border-destructive/20";
+      case "sent_to_court": return "bg-primary/10 text-primary border-primary/20";
+      case "under_review": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
       default: return "bg-warning/10 text-warning border-warning/20";
     }
   };

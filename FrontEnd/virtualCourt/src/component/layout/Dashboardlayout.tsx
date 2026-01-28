@@ -5,6 +5,7 @@ import { DashboardSidebar } from "./Dashboardsidebar";
 import { PageTransition } from "./Pagetransition";
 import { Menu } from "lucide-react";
 import { Button } from "../ui/button";
+import { NotificationCenter } from "../shared/NotificationCenter";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -28,10 +29,10 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
       )}
 
       {/* Sidebar */}
-      <DashboardSidebar 
-        role={role} 
-        isOpen={sidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
+      <DashboardSidebar
+        role={role}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       {/* Main content */}
@@ -39,17 +40,20 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
         {/* Mobile header */}
         <header className="lg:hidden flex items-center justify-between p-4 border-b bg-card">
           <Button
-              className="p-2 hover:bg-accent rounded-md"
+            className="p-2 hover:bg-accent rounded-md"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-6 w-6" />
           </Button>
           <h1 className="font-semibold gradient-text">Virtual Court</h1>
-          <div className="w-10" />
+          <NotificationCenter />
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 relative">
+          <div className="hidden lg:block absolute top-6 right-8 z-30">
+            <NotificationCenter />
+          </div>
           <PageTransition>
             {children}
           </PageTransition>

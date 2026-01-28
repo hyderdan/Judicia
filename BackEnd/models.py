@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -16,6 +16,7 @@ class User(Base):
 
     # Relationships
     cases = relationship("Case", back_populates="user", primaryjoin="User.id == Case.user_id")
+    notifications = relationship("Notification", back_populates="user")
 
 class Admin(Base):
     __tablename__ = "admins"
@@ -32,6 +33,7 @@ class Case(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     police_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    court_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     title = Column(String)
     description = Column(Text)
     incident_date = Column(String)
@@ -41,6 +43,7 @@ class Case(Base):
     # Relationships
     user = relationship("User", foreign_keys=[user_id], back_populates="cases")
     police = relationship("User", foreign_keys=[police_id])
+    court = relationship("User", foreign_keys=[court_id])
     evidence = relationship("Evidence", back_populates="case")
 
 
@@ -55,4 +58,19 @@ class Evidence(Base):
 
     # Relationship
     case = relationship("Case", back_populates="evidence")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
+    message = Column(Text)
+    type = Column(String) # "review" / "court_transfer"
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="notifications")
+    case = relationship("Case")
 

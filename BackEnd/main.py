@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form
+import datetime
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_db, engine
-from models import User, Admin, Case, Evidence
+from models import User, Admin, Case, Evidence, Notification
 import models
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -65,13 +66,29 @@ class EvidenceResponse(BaseModel):
 
 class CaseResponse(BaseModel):
     id: int
+    user_id: int
+    police_id: Optional[int] = None
     title: str
-    description: Optional[str] = None
-    incident_date: Optional[str] = None
+    description: Optional[str] = ""
+    incident_date: Optional[str] = ""
     status: Optional[str] = "pending"
-    police_id: Optional[int]
-    police_name: Optional[str] = None
+    created_at: datetime.datetime
+    police_name: Optional[str] = "Not Assigned"
+    court_id: Optional[int] = None
+    court_name: Optional[str] = "Not Assigned"
+    user_name: Optional[str] = "Unknown"
     evidence: List[EvidenceResponse] = []
+
+    class Config:
+        orm_mode = True
+
+class NotificationResponse(BaseModel):
+    id: int
+    message: str
+    type: str
+    is_read: bool
+    created_at: datetime.datetime
+    case_id: Optional[int] = None
 
     class Config:
         orm_mode = True
@@ -194,9 +211,145 @@ def update_user_profile(user_id: int, data: UserUpdate, db: Session = Depends(ge
     db.commit()
     return {"message": "Profile updated successfully"}
 
+@app.get("/courts", response_model=List[UserResponse])
+def get_courts(db: Session = Depends(get_db)):
+    # Support both "court" and "CourtOfficial" for flexibility
+    return db.query(User).filter(User.role.in_(["court", "CourtOfficial"]), User.status == "approved").all()
+
+@app.put("/police/cases/{case_id}/proceed")
+def proceed_to_court(case_id: int, court_id: int = Form(...), db: Session = Depends(get_db)):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    court_exists = db.query(User).filter(User.id == court_id, User.role.in_(["court", "CourtOfficial"])).first()
+    if not court_exists:
+        raise HTTPException(status_code=400, detail="Invalid court selection")
+    
+    case.status = "sent_to_court"
+    case.court_id = court_id
+    
+    # Create notification for user
+    court_user = db.query(User).filter(User.id == court_id).first()
+    notification = Notification(
+        user_id=case.user_id,
+        case_id=case.id,
+        message=f"Your case '{case.title}' has been processed and sent to {court_user.name} for legal review.",
+        type="court_transfer"
+    )
+    db.add(notification)
+    
+    db.commit()
+    return {"message": "Case successfully sent to court"}
+
+@app.post("/police/cases/{case_id}/review")
+def review_case(case_id: int, db: Session = Depends(get_db)):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    if case.status == "pending":
+        case.status = "under_review"
+        
+        # Create notification
+        police_station = db.query(User).filter(User.id == case.police_id).first()
+        notification = Notification(
+            user_id=case.user_id,
+            case_id=case.id,
+            message=f"Police Station {police_station.name} has started reviewing your case: '{case.title}'.",
+            type="review"
+        )
+        db.add(notification)
+        db.commit()
+        return {"message": "Case marked as under review"}
+    
+    return {"message": "Case already under review or processed"}
+
+@app.get("/user/notifications/{user_id}", response_model=List[NotificationResponse])
+def get_user_notifications(user_id: int, db: Session = Depends(get_db)):
+    return db.query(Notification).filter(Notification.user_id == user_id).order_by(Notification.created_at.desc()).all()
+
+@app.put("/notifications/{notification_id}/read")
+def mark_notification_read(notification_id: int, db: Session = Depends(get_db)):
+    notification = db.query(Notification).filter(Notification.id == notification_id).first()
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notification.is_read = True
+    db.commit()
+    return {"message": "Notification marked as read"}
+
+@app.get("/police/cases/{police_id}", response_model=List[CaseResponse])
+def get_police_cases(police_id: int, db: Session = Depends(get_db)):
+    cases = db.query(Case).filter(Case.police_id == police_id).all()
+    # Add user name, police name, and court name for each case
+    for case in cases:
+        if case.user_id:
+            user = db.query(User).filter(User.id == case.user_id).first()
+            if user:
+                case.user_name = user.name
+        
+        if case.police_id:
+            police_station = db.query(User).filter(User.id == case.police_id).first()
+            if police_station:
+                case.police_name = police_station.name
+        else:
+            case.police_name = "Not Assigned"
+
+        if case.court_id:
+            court = db.query(User).filter(User.id == case.court_id).first()
+            if court:
+                case.court_name = court.name
+        else:
+            case.court_name = "Not Assigned"
+            
+    return cases
+
+@app.get("/police/stats/{police_id}")
+def get_police_stats(police_id: int, db: Session = Depends(get_db)):
+    total_cases = db.query(Case).filter(Case.police_id == police_id).count()
+    sent_to_court = db.query(Case).filter(Case.police_id == police_id, Case.status == "sent_to_court").count()
+    pending_review = db.query(Case).filter(Case.police_id == police_id, Case.status == "pending").count()
+    
+    # Count evidence for all cases belonging to this police station
+    evidence_count = db.query(Evidence).join(Case).filter(Case.police_id == police_id).count()
+    
+    return {
+        "active_cases": total_cases,
+        "evidence_uploaded": evidence_count,
+        "sent_to_court": sent_to_court,
+        "pending_review": pending_review
+    }
+
+@app.get("/court/cases/{court_id}", response_model=List[CaseResponse])
+def get_court_cases(court_id: int, db: Session = Depends(get_db)):
+    cases = db.query(Case).filter(Case.court_id == court_id).all()
+    # Add user name, police name, and court name for each case
+    for case in cases:
+        if case.user_id:
+            user = db.query(User).filter(User.id == case.user_id).first()
+            if user:
+                case.user_name = user.name
+        
+        if case.police_id:
+            police_station = db.query(User).filter(User.id == case.police_id).first()
+            if police_station:
+                case.police_name = police_station.name
+        else:
+            case.police_name = "Not Assigned"
+
+        if case.court_id:
+            court = db.query(User).filter(User.id == case.court_id).first()
+            if court:
+                case.court_name = court.name
+        else:
+            case.court_name = "Not Assigned"
+            
+    return cases
+
 @app.get("/user/cases/{user_id}", response_model=List[CaseResponse])
 def get_user_cases(user_id: int, db: Session = Depends(get_db)):
     cases = db.query(Case).filter(Case.user_id == user_id).all()
+    # Add police name and court name for each case
     for case in cases:
         if case.police_id:
             police_station = db.query(User).filter(User.id == case.police_id).first()
@@ -204,6 +357,13 @@ def get_user_cases(user_id: int, db: Session = Depends(get_db)):
                 case.police_name = police_station.name
         else:
             case.police_name = "Not Assigned"
+
+        if case.court_id:
+            court = db.query(User).filter(User.id == case.court_id).first()
+            if court:
+                case.court_name = court.name
+        else:
+            case.court_name = "Not Assigned"
     return cases
 
 @app.get("/user/stats/{user_id}")
