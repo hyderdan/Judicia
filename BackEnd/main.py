@@ -12,6 +12,8 @@ from typing import Optional, List
 import os
 import shutil
 import uuid
+from ai_utils import analyzer
+from fastapi import BackgroundTasks
 
 app = FastAPI()
 
@@ -450,6 +452,61 @@ async def file_case(
     
     db.commit()
     return {"message": "Case filed successfully", "case_id": new_case.id}
+
+@app.post("/evidence/{evidence_id}/analyze")
+async def analyze_evidence(evidence_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    if evidence.file_type != "video" and evidence.file_type != "image":
+         raise HTTPException(status_code=400, detail="Only video and image evidence can be analyzed")
+
+    evidence.analysis_status = "processing"
+    db.commit()
+
+    # Define the background task
+    def run_analysis(ev_id: int):
+        # We need a fresh DB session for the background task
+        from database import SessionLocal
+        inner_db = SessionLocal()
+        try:
+            ev = inner_db.query(Evidence).filter(Evidence.id == ev_id).first()
+            # Construct full path (strip leading slash)
+            file_path = ev.file_path.lstrip('/')
+            
+            # Run the AI logic
+            is_authentic, confidence = analyzer.analyze_video(file_path)
+            
+            ev.is_authentic = is_authentic
+            ev.confidence_score = confidence
+            ev.analysis_status = "completed"
+            inner_db.commit()
+        except Exception as e:
+            print(f"Analysis failed for evidence {ev_id}: {e}")
+            ev = inner_db.query(Evidence).filter(Evidence.id == ev_id).first()
+            ev.analysis_status = "failed"
+            inner_db.commit()
+        finally:
+            inner_db.close()
+
+    background_tasks.add_task(run_analysis, evidence_id)
+    
+    return {"message": "Analysis started in background", "status": "processing"}
+
+@app.get("/evidence/{evidence_id}")
+def get_evidence_detail(evidence_id: int, db: Session = Depends(get_db)):
+    evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    return {
+        "id": evidence.id,
+        "file_path": evidence.file_path,
+        "file_type": evidence.file_type,
+        "analysis_status": evidence.analysis_status,
+        "is_authentic": evidence.is_authentic,
+        "confidence_score": evidence.confidence_score
+    }
 
 @app.get("/admin/stats")
 def get_admin_stats(db: Session = Depends(get_db)):

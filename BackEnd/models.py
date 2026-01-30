@@ -55,6 +55,9 @@ class Evidence(Base):
     file_path = Column(String)
     file_type = Column(String) # image / video
     uploaded_at = Column(DateTime, default=datetime.datetime.utcnow)
+    analysis_status = Column(String, default="not_started") # not_started, processing, completed, failed
+    is_authentic = Column(Boolean, nullable=True)
+    confidence_score = Column(Integer, nullable=True)
 
     # Relationship
     case = relationship("Case", back_populates="evidence")

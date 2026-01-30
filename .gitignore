@@ -1,0 +1,35 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+.env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Databases
+*.db
+*.sqlite3
+
+# Project Specific
+BackEnd/venv/
+BackEnd/uploads/
+FrontEnd/virtualCourt/node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+.gemini/
+.antigravity/
+
+# AI Models (large files)
+*.pth
+*.h5
+*.weights
+*.onnx
