@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form,BackgroundTasks
 import datetime
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -12,9 +12,10 @@ from typing import Optional, List
 import os
 import shutil
 import uuid
-from ai_utils import analyzer
+# from ai_utils import AIVideoAnalyzer
 from fastapi import BackgroundTasks
-
+from ai_utils import get_analyzer
+from database import SessionLocal
 app = FastAPI()
 
 # Create uploads directory
@@ -453,46 +454,66 @@ async def file_case(
     db.commit()
     return {"message": "Case filed successfully", "case_id": new_case.id}
 
+
+
 @app.post("/evidence/{evidence_id}/analyze")
-async def analyze_evidence(evidence_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def analyze_evidence(evidence_id: int, db: Session = Depends(get_db)):
     evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
     if not evidence:
         raise HTTPException(status_code=404, detail="Evidence not found")
 
-    if evidence.file_type != "video" and evidence.file_type != "image":
-         raise HTTPException(status_code=400, detail="Only video and image evidence can be analyzed")
+    file_path = evidence.file_path.lstrip("/")
 
-    evidence.analysis_status = "processing"
+    is_authentic = False
+    confidence = 0.0
+    
+    try:
+        result = analyzer.analyze(file_path)
+        # result is a dict: {'verdict': '...', 'confidence': ..., ...}
+        
+        is_authentic = result.get("verdict") == "LIKELY_REAL"
+        confidence = result.get("confidence", 0.0)
+        
+        # Debug print
+        print(f"[ANALYSIS RESULT] {result}")
+        
+    except Exception as e:
+        print(f"[ERROR] Logic failed during analysis result parsing: {e}")
+        # Default safety
+        is_authentic = False
+        confidence = 0.0
+
+    evidence.is_authentic = is_authentic
+    evidence.confidence_score = confidence
+    evidence.analysis_status = "completed"
+    
+    # --- AUTO-RESOLVE CASE & NOTIFY USER ---
+    case = db.query(Case).filter(Case.id == evidence.case_id).first()
+    if case:
+        case.status = "resolved"
+        
+        # Create notification
+        verdict_text = "Authentic/Real" if is_authentic else "Potential Deepfake/AI-Generated"
+        notification_message = (
+            f"Evidence analysis completed for case '{case.title}'. "
+            f"Result: {verdict_text} ({confidence:.1f}% confidence)."
+        )
+        
+        notification = Notification(
+            user_id=case.user_id,
+            case_id=case.id,
+            message=notification_message,
+            type="analysis_complete"
+        )
+        db.add(notification)
+
     db.commit()
 
-    # Define the background task
-    def run_analysis(ev_id: int):
-        # We need a fresh DB session for the background task
-        from database import SessionLocal
-        inner_db = SessionLocal()
-        try:
-            ev = inner_db.query(Evidence).filter(Evidence.id == ev_id).first()
-            # Construct full path (strip leading slash)
-            file_path = ev.file_path.lstrip('/')
-            
-            # Run the AI logic
-            is_authentic, confidence = analyzer.analyze_video(file_path)
-            
-            ev.is_authentic = is_authentic
-            ev.confidence_score = confidence
-            ev.analysis_status = "completed"
-            inner_db.commit()
-        except Exception as e:
-            print(f"Analysis failed for evidence {ev_id}: {e}")
-            ev = inner_db.query(Evidence).filter(Evidence.id == ev_id).first()
-            ev.analysis_status = "failed"
-            inner_db.commit()
-        finally:
-            inner_db.close()
-
-    background_tasks.add_task(run_analysis, evidence_id)
-    
-    return {"message": "Analysis started in background", "status": "processing"}
+    return {
+        "result": "REAL" if is_authentic else "FAKE",
+        "confidence": confidence,
+        "details": result 
+    }
 
 @app.get("/evidence/{evidence_id}")
 def get_evidence_detail(evidence_id: int, db: Session = Depends(get_db)):
@@ -581,6 +602,38 @@ def admin_create_user(user: AdminCreateUserRequest, db: Session = Depends(get_db
     db.add(new_user)
     db.commit()
     return {"message": f"{user.role} created successfully"}
+
+@app.get("/court/{court_id}/stats")
+def get_court_stats(court_id: int, db: Session = Depends(get_db)):
+    # 1. Total Assigned Cases
+    assigned_count = db.query(Case).filter(Case.court_id == court_id).count()
+    
+    # 2. AI Analyses (Total evidence items processed for this court's cases)
+    total_analyses = db.query(Evidence).join(Case).filter(
+        Case.court_id == court_id,
+        Evidence.analysis_status == "completed"
+    ).count()
+
+    # 3. Verified Authentic
+    verified_count = db.query(Evidence).join(Case).filter(
+        Case.court_id == court_id,
+        Evidence.analysis_status == "completed",
+        Evidence.is_authentic == True
+    ).count()
+
+    # 4. Flagged (Fake)
+    flagged_count = db.query(Evidence).join(Case).filter(
+        Case.court_id == court_id,
+        Evidence.analysis_status == "completed",
+        Evidence.is_authentic == False
+    ).count()
+
+    return {
+        "assigned_cases": assigned_count,
+        "total_analyses": total_analyses,
+        "verified_evidence": verified_count,
+        "flagged_items": flagged_count
+    }
 
 @app.get("/")
 def home():
