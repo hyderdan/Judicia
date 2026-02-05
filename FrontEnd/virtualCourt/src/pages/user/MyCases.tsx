@@ -83,6 +83,7 @@ export default function MyCases() {
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
       case "approved": return <CheckCircle2 className="h-5 w-5 text-success" />;
+      case "resolved": return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
       case "rejected": return <AlertCircle className="h-5 w-5 text-destructive" />;
       case "sent_to_court": return <Gavel className="h-5 w-5 text-primary" />;
       case "under_review": return <Clock className="h-5 w-5 text-blue-500" />;
@@ -93,6 +94,7 @@ export default function MyCases() {
   const getStatusClass = (status: string) => {
     switch (status.toLowerCase()) {
       case "approved": return "bg-success/10 text-success border-success/20";
+      case "resolved": return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
       case "rejected": return "bg-destructive/10 text-destructive border-destructive/20";
       case "sent_to_court": return "bg-primary/10 text-primary border-primary/20";
       case "under_review": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
