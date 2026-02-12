@@ -37,6 +37,7 @@ const menuItems = {
     { icon: FileText, label: "Case Management", path: "/police/cases" },
     { icon: Upload, label: "Evidence Upload", path: "/police/evidence" },
     { icon: MessageSquare, label: "Communication", path: "/police/communication" },
+    { icon: FileText, label: "News Management", path: "/police/news-management" },
   ],
   court: [
     { icon: LayoutDashboard, label: "Dashboard", path: "/CourtOfficial" },
@@ -49,6 +50,7 @@ const menuItems = {
     { icon: User, label: "My Profile", path: "/user/profile" },
     { icon: FileText, label: "File Case", path: "/user/file-case" },
     { icon: FolderOpen, label: "My Cases", path: "/user/cases" },
+    { icon: MessageSquare, label: "News Feed", path: "/user/news-feed" },
   ],
 };
 

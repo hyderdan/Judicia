@@ -77,3 +77,16 @@ class Notification(Base):
     user = relationship("User", back_populates="notifications")
     case = relationship("Case")
 
+class NewsPost(Base) :
+    __tablename__ = "news_posts"
+
+    id = Column(Integer, primary_key=True)
+    police_id = Column(Integer, ForeignKey("users.id"))
+    title = Column(String)
+    content = Column(Text)
+    image_path = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationship
+    police = relationship("User")
+

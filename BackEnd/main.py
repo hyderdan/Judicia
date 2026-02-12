@@ -96,6 +96,23 @@ class NotificationResponse(BaseModel):
     class Config:
         orm_mode = True
 
+class NewsPostCreate(BaseModel):
+    title: str
+    content: str
+    image_path: Optional[str] = None
+
+class NewsPostResponse(BaseModel):
+    id: int
+    police_id: int
+    title: str
+    content: str
+    image_path: Optional[str] = None
+    created_at: datetime.datetime
+    police_name: Optional[str] = "Unknown Station"
+
+    class Config:
+        orm_mode = True
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
@@ -468,6 +485,7 @@ def analyze_evidence(evidence_id: int, db: Session = Depends(get_db)):
     confidence = 0.0
     
     try:
+        analyzer = get_analyzer()
         result = analyzer.analyze(file_path)
         # result is a dict: {'verdict': '...', 'confidence': ..., ...}
         
@@ -637,7 +655,71 @@ def get_court_stats(court_id: int, db: Session = Depends(get_db)):
 
 @app.get("/")
 def home():
-    return {"message": "Backend is running"}
+    return {"message": "Backend is running - News Feature Active"}
+
+# --- NEWS BLOG ENDPOINTS ---
+
+@app.post("/police/news", response_model=NewsPostResponse)
+async def create_news_post(
+    police_id: int = Form(...),
+    title: str = Form(...),
+    content: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    # Verify police exists
+    police = db.query(User).filter(User.id == police_id, User.role == "police").first()
+    if not police:
+        raise HTTPException(status_code=404, detail="Police station not found")
+    
+    image_path = None
+    if file:
+        file_ext = os.path.splitext(file.filename)[1]
+        file_name = f"news_{uuid.uuid4()}{file_ext}"
+        image_path = os.path.join(UPLOAD_DIR, file_name)
+        
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        image_path = f"/uploads/{file_name}"
+
+    new_post = models.NewsPost(
+        police_id=police_id,
+        title=title,
+        content=content,
+        image_path=image_path
+    )
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post)
+    
+    new_post.police_name = police.name
+    return new_post
+
+@app.get("/news", response_model=List[NewsPostResponse])
+def get_all_news(db: Session = Depends(get_db)):
+    posts = db.query(models.NewsPost).order_by(models.NewsPost.created_at.desc()).all()
+    for post in posts:
+        police = db.query(User).filter(User.id == post.police_id).first()
+        post.police_name = police.name if police else "Unknown Station"
+    return posts
+
+@app.get("/police/news/{police_id}", response_model=List[NewsPostResponse])
+def get_police_news(police_id: int, db: Session = Depends(get_db)):
+    posts = db.query(models.NewsPost).filter(models.NewsPost.police_id == police_id).order_by(models.NewsPost.created_at.desc()).all()
+    police = db.query(User).filter(User.id == police_id).first()
+    for post in posts:
+        post.police_name = police.name if police else "Unknown Station"
+    return posts
+
+@app.delete("/police/news/{post_id}")
+def delete_news_post(post_id: int, db: Session = Depends(get_db)):
+    post = db.query(models.NewsPost).filter(models.NewsPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    db.delete(post)
+    db.commit()
+    return {"message": "Post deleted successfully"}
 
 # Force reload for debugging
 

@@ -39,6 +39,8 @@ import UserDashboard from "./pages/user/UserDashboard";
 import UserProfile from "./pages/user/UserProfile";
 import FileCase from "./pages/user/FileCase";
 import MyCases from "./pages/user/MyCases";
+import NewsFeed from "./pages/user/NewsFeed";
+import NewsManagement from "./pages/police/NewsManagement";
 
 import NotFound from "./pages/NotFound";
 
@@ -77,6 +79,7 @@ const App: React.FC = () => {
               <Route path="/police/cases" element={<CaseManagement />} />
               <Route path="/police/evidence" element={<EvidenceUpload />} />
               <Route path="/police/communication" element={<Communication />} />
+              <Route path="/police/news-management" element={<NewsManagement />} />
             </Route>
 
             {/* Court */}
@@ -93,6 +96,7 @@ const App: React.FC = () => {
               <Route path="/user/profile" element={<UserProfile />} />
               <Route path="/user/file-case" element={<FileCase />} />
               <Route path="/user/cases" element={<MyCases />} />
+              <Route path="/user/news-feed" element={<NewsFeed />} />
             </Route>
 
             {/* Fallback */}
