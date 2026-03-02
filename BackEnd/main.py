@@ -16,6 +16,7 @@ import uuid
 from fastapi import BackgroundTasks
 from ai_utils import get_analyzer
 from database import SessionLocal
+import json
 app = FastAPI()
 
 # Create uploads directory
@@ -481,29 +482,31 @@ def analyze_evidence(evidence_id: int, db: Session = Depends(get_db)):
 
     file_path = evidence.file_path.lstrip("/")
 
-    is_authentic = False
-    confidence = 0.0
     
     try:
         analyzer = get_analyzer()
-        result = analyzer.analyze(file_path)
-        # result is a dict: {'verdict': '...', 'confidence': ..., ...}
+        gemini_result = analyzer.analyze(file_path)        # result is a dict: {'verdict': '...', 'confidence': ..., ...}
         
-        is_authentic = result.get("verdict") == "LIKELY_REAL"
-        confidence = result.get("confidence", 0.0)
+        if not gemini_result:
+            raise Exception("Empty response from Gemini")
+
+            evidence.analysis_status = "completed"
+            evidence.is_authentic = None  # optional
+            evidence.confidence_score = None  # optional
+            evidence.analysis_report = gemini_result
+            verdict = parsed.get("verdict","AI_GENERATED")
+            confidence = parsed.get("confidence",0.0)
         
-        # Debug print
-        print(f"[ANALYSIS RESULT] {result}")
+            
         
     except Exception as e:
         print(f"[ERROR] Logic failed during analysis result parsing: {e}")
-        # Default safety
-        is_authentic = False
-        confidence = 0.0
+        evidence.analysis_status = "failed"
+        db.commit()
+        raise HTTPException(status_code=500, detail="AI analysis failed")
+       
 
-    evidence.is_authentic = is_authentic
-    evidence.confidence_score = confidence
-    evidence.analysis_status = "completed"
+   
     
     # --- AUTO-RESOLVE CASE & NOTIFY USER ---
     case = db.query(Case).filter(Case.id == evidence.case_id).first()
@@ -511,10 +514,9 @@ def analyze_evidence(evidence_id: int, db: Session = Depends(get_db)):
         case.status = "resolved"
         
         # Create notification
-        verdict_text = "Authentic/Real" if is_authentic else "Potential Deepfake/AI-Generated"
+        # verdict_text = "Authentic/Real" if evidence.analysis_status == "completed" else "Potential Deepfake/AI-Generated"
         notification_message = (
             f"Evidence analysis completed for case '{case.title}'. "
-            f"Result: {verdict_text} ({confidence:.1f}% confidence)."
         )
         
         notification = Notification(
@@ -526,13 +528,11 @@ def analyze_evidence(evidence_id: int, db: Session = Depends(get_db)):
         db.add(notification)
 
     db.commit()
-
     return {
-        "result": "REAL" if is_authentic else "FAKE",
-        "confidence": confidence,
-        "details": result 
+        "analysis_status": "completed",
+        "report": gemini_result
     }
-
+    
 @app.get("/evidence/{evidence_id}")
 def get_evidence_detail(evidence_id: int, db: Session = Depends(get_db)):
     evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
@@ -543,8 +543,7 @@ def get_evidence_detail(evidence_id: int, db: Session = Depends(get_db)):
         "file_path": evidence.file_path,
         "file_type": evidence.file_type,
         "analysis_status": evidence.analysis_status,
-        "is_authentic": evidence.is_authentic,
-        "confidence_score": evidence.confidence_score
+        "analysis_report": evidence.analysis_report
     }
 
 @app.get("/admin/stats")

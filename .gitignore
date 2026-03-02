@@ -12,6 +12,7 @@ __pycache__/
 # Databases
 *.db
 *.sqlite3
+.env
 
 # Project Specific
 BackEnd/venv/
