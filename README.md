@@ -5,7 +5,7 @@
 it is an online judicial management system that allows users to file cases, submit digital evidence, and monitor case progress remotely
 
 ## Demo
-![Click here to watch Demo](/src/assets/demo/VideoProject1.gif)
+![Click here to watch Demo](src/assets/demo/VideoProject1.gif)
 
 
 ## Features
